@@ -387,23 +387,57 @@ st.markdown("<div class='filter-title'>🔍 Data Filters</div>", unsafe_allow_ht
 
 c1, c2, c3, c4 = st.columns(4)
 
-# --- Date filter (NEW) ---
+# --- Date filter (UPDATED: dropdown + start/end, no range-picker UI) ---
 with c1:
     if "activity_date" in df_all.columns:
         _d = df_all["activity_date"].dropna()
         if not _d.empty:
-            min_d = _d.min().date()
-            max_d = _d.max().date()
-            sel_date_range = st.date_input(
-                "Date range",
-                value=(min_d, max_d),
-                min_value=min_d,
-                max_value=max_d,
-            )
+            _min_d = _d.min().date()
+            _max_d = _d.max().date()
         else:
-            sel_date_range = None
+            _min_d = None
+            _max_d = None
     else:
-        sel_date_range = None
+        _min_d = None
+        _max_d = None
+
+    date_mode = st.selectbox(
+        "Select date range",
+        options=["Auto date range", "Last 7 days", "Last 30 days", "This month", "This year", "Custom"],
+        index=0,
+    )
+
+    start_date = None
+    end_date = None
+
+    if _min_d is not None and _max_d is not None:
+        if date_mode == "Auto date range":
+            start_date, end_date = _min_d, _max_d
+        elif date_mode == "Last 7 days":
+            end_date = _max_d
+            start_date = max(_min_d, end_date - pd.Timedelta(days=6))
+        elif date_mode == "Last 30 days":
+            end_date = _max_d
+            start_date = max(_min_d, end_date - pd.Timedelta(days=29))
+        elif date_mode == "This month":
+            end_date = _max_d
+            start_date = end_date.replace(day=1)
+            if start_date < _min_d:
+                start_date = _min_d
+        elif date_mode == "This year":
+            end_date = _max_d
+            start_date = end_date.replace(month=1, day=1)
+            if start_date < _min_d:
+                start_date = _min_d
+        else:  # Custom
+            c1a, c1b = st.columns(2)
+            with c1a:
+                start_date = st.date_input("Start date", value=_min_d, min_value=_min_d, max_value=_max_d)
+            with c1b:
+                end_date = st.date_input("End date", value=_max_d, min_value=_min_d, max_value=_max_d)
+    else:
+        # No valid dates in data; keep unset (no filtering applied)
+        start_date, end_date = None, None
 
 with c2:
     countries = sorted(df_all["org_hq_country"].dropna().unique()) if "org_hq_country" in df_all.columns else []
@@ -440,14 +474,8 @@ st.markdown("</div>", unsafe_allow_html=True)
 # Apply filters
 t = df_all.copy()
 
-# Date range filter (NEW)
-if sel_date_range and "activity_date" in t.columns:
-    # streamlit can return a single date or a (start, end) tuple
-    if isinstance(sel_date_range, (list, tuple)) and len(sel_date_range) == 2:
-        start_date, end_date = sel_date_range
-    else:
-        start_date = end_date = sel_date_range
-
+# Date filter (UPDATED)
+if start_date is not None and end_date is not None and "activity_date" in t.columns:
     start_ts = pd.to_datetime(start_date)
     end_ts = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
 
